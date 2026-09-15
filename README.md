@@ -1,111 +1,55 @@
-# PNU-Flow — Phase 3 (Improved v2)
+# PNU-Flow: Predictive Smart Campus Navigator & Crowd Optimization
 
-**Predictive Smart Campus Companion & Indoor Navigator**
-Course: CAI 360 | CCIS, Princess Nourah bint Abdulrahman University
+An end-to-end intelligent indoor navigation and crowd management system deployed for the CCIS building at Princess Nourah bint Abdulrahman University. The system integrates deep learning time-series forecasting with dynamic graph pathfinding to proactively mitigate campus bottlenecks.
 
----
-
-## What was fixed in v2
-
-| # | Bug in original | Fix in v2 |
-|---|---|---|
-| 1 | `_heuristic()` always returned `1.0` — A\* was actually Dijkstra | Real Euclidean heuristic using zone 2-D coordinates |
-| 2 | `train_test_split` shuffled data — future leaked into training | Chronological split (80% earliest → train, 20% latest → val) |
-| 3 | Scaler fitted on full dataset before split | Scaler fitted on **training slice only** |
-| 4 | Training blind — no validation loop, no early stopping | Val loss tracked every epoch; early stopping (patience=7); LR scheduler |
-| 5 | Lag features hardcoded as `0.35, 0.32…` for ALL zones | Live lags loaded from simulation CSV at inference time |
-| 6 | No study-spot recommendation (in Phase 2 proposal, missing in code) | `find_study_spot()` returns quietest seated zone with available seats |
+🔗 **Live Web Application:** [PNU-Flow Streamlit App](https://pnuflow-5ccvsfqeniemkct3onste4.streamlit.app/)[cite: 1]
 
 ---
 
-## Project structure
+## 🏛️ System Architecture
 
-```
+1. **Discrete-Event Simulation (SimPy):** Models campus crowd movement grounded in CCIS academic schedules (120 sections across 15 zones).
+2. **Dual-Headed LSTM (PyTorch):** Jointly predicts zone-level occupancy rates and model confidence scores using historical lag features.
+3. **Dynamic Graph Routing (NetworkX & Hybrid A\*):** Calculates optimal routes using congestion-aware edge weights:
+   $$\text{Edge Weight} = \text{Distance} + (\text{Predicted Occupancy} \times \text{Penalty Factor})$$
+[cite: 1]
+   *Falls back to standard distance-based A\* if model confidence is below 60%.*[cite: 1]
+4. **Streamlit Interface:** Responsive dashboard providing real-time routing, zone congestion breakdowns, and quiet study-spot recommendations[cite: 1, 3].
+
+---
+
+## 📊 Performance & Validation
+
+| Metric | LSTM Model | Persistence Baseline | Improvement / Status |
+|---|---|---|---|
+| **Mean Absolute Error (MAE)** | **0.01236** | 0.04125 | **70% Reduction** (Passed < 0.10)[cite: 1] |
+| **Root Mean Square Error (RMSE)** | **0.01650** | 0.05584 | **70% Reduction**[cite: 1] |
+| **R-Squared ($R^2$)** | **0.8236** | -1.021 | **82.4% Variance Captured**[cite: 1] |
+| **Average Model Confidence** | **98.77%** | — | High Reliability ($\ge$ 60%)[cite: 1] |
+| **Inference Latency** | **< 100 ms** | — | Real-Time Suitable[cite: 1] |
+
+---
+
+## 🛠️ Project Structure
+
+```text
 pnu_flow/
-├── config.py                    — zone coords, hyper-params, paths
-├── main.py                      — CLI entry point (train / demo / infer)
-│
-├── data/
-│   ├── generate_timetable.py    — synthetic CCIS timetable
-│   ├── data_simulation.py       — SimPy crowd-flow simulation
-│   └── feature_engineering.py  — lag features, encoding, scaling
-│
-├── models/
-│   ├── lstm_model.py            — OccupancyLSTM (dual-head) + LSTMTrainer
-│   ├── graph_builder.py         — CCIS DiGraph (15 nodes, 18 edges, coords)
-│   └── path_optimizer.py        — HybridPathOptimizer (A* + fallback) + find_study_spot
-│
-├── pipelines/
-│   ├── training_pipeline.py     — end-to-end training orchestrator
-│   └── inference_pipeline.py    — query_route() with live lag features
-│
-└── utils/
-    └── performance_analysis.py  — MAE/RMSE/R², plots, baseline comparison
-```
-
----
-
-## Quick start
-
-```bash
-pip install -r requirements.txt
-
-# Full training pipeline
-python -m pnu_flow.main train
-
-# Train + immediately infer one route
-python -m pnu_flow.main demo --from main_entrance --to lecture_hall_201
-
-# Inference only (after training)
-python -m pnu_flow.main infer \
-    --from main_entrance \
-    --to lecture_hall_201 \
-    --time 2026-03-30T10:30:00
-```
-
----
-
-## Available zone IDs
-
-| Zone ID | Description |
-|---|---|
-| `main_entrance` | Building main entrance |
-| `corridor_A_G` / `corridor_B_G` | Ground floor corridors |
-| `elevator_lobby_G` / `stairs_G1` | Vertical access (ground) |
-| `cafeteria` | Cafeteria (capacity 220) |
-| `elevator_lobby_1` / `corridor_A_1` / `corridor_B_1` | Floor 1 |
-| `study_hall_1` | Study hall (capacity 120) |
-| `stairs_12` / `elevator_lobby_2` | Vertical access (floor 1→2) |
-| `corridor_A_2` / `corridor_B_2` | Floor 2 corridors |
-| `lecture_hall_201` | Main lecture hall (capacity 200) |
-
----
-
-## Hybrid integration (ML + Non-ML)
-
-```
-LSTM (ML)          → occupancy_pct + confidence per zone
-        ↓
-HybridPathOptimizer (Non-ML A*)
-        ├── confidence ≥ 0.60  →  A* with dynamic edge weights
-        │                          weight = base_dist + occ × penalty × base_dist
-        └── confidence < 0.60  →  Dijkstra on base distances (fallback)
-```
-
-The ML and Non-ML components are **deeply integrated**: the LSTM's
-confidence output gates whether the A\* algorithm uses learned occupancy
-weights or falls back to pure distance-based routing.
-
----
-
-## Open-source citations
-
-| Library | URL | Licence |
-|---|---|---|
-| PyTorch | https://pytorch.org | BSD |
-| NetworkX | https://networkx.org | BSD |
-| SimPy | https://simpy.readthedocs.io | MIT |
-| NumPy | https://numpy.org | BSD |
-| Pandas | https://pandas.pydata.org | BSD |
-| scikit-learn | https://scikit-learn.org | BSD |
-| matplotlib | https://matplotlib.org | PSF |
+├── app.py                      — Streamlit interactive web application
+├── setup.py                    — Package distribution setup
+├── requirements.txt            — Project dependencies
+└── pnu_flow/
+    ├── config.py               — Zone coords, hyper-params, paths
+    ├── main.py                 — CLI entry point (train / demo / infer)
+    ├── data/
+    │   ├── generate_timetable.py— Synthetic CCIS timetable
+    │   ├── data_simulation.py  — SimPy crowd-flow simulation
+    │   └── feature_engineering.py— Lag features, encoding, scaling
+    ├── models/
+    │   ├── lstm_model.py       — OccupancyLSTM (dual-head) + LSTMTrainer
+    │   ├── graph_builder.py    — CCIS DiGraph (15 nodes, 18 edges, coords)
+    │   └── path_optimizer.py   — HybridPathOptimizer (A* + fallback) + find_study_spot
+    ├── pipelines/
+    │   ├── training_pipeline.py— End-to-end training orchestrator
+    │   └── inference_pipeline.py— Real-time route prediction pipeline
+    └── utils/
+        └── performance_analysis.py— MAE/RMSE/R², plots, baseline comparison
